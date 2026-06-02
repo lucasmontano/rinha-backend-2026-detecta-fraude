@@ -3,8 +3,7 @@ services:
     logging:
       driver: "json-file"
     environment:
-      RINHA_EXACT_KNN: "1"
-      RINHA_INDEX_PATH: "/data/references.kdx"
+      INDEX_PATH: "/data/references.kdx"
     volumes:
       - "${RINHA_DATA_DIR:-/private/tmp/rinha-bench}:/data:ro"
 
@@ -12,7 +11,6 @@ services:
     logging:
       driver: "json-file"
     environment:
-      RINHA_EXACT_KNN: "1"
-      RINHA_INDEX_PATH: "/data/references.kdx"
+      INDEX_PATH: "/data/references.kdx"
     volumes:
       - "${RINHA_DATA_DIR:-/private/tmp/rinha-bench}:/data:ro"

@@ -99,27 +99,3 @@ pub fn vectorize_q(p: &RawPayload<'_>) -> [i16; STORE_DIM] {
     q[13] = quantize_clamped(p.merchant_avg_amount / MAX_MERCHANT_AVG_AMOUNT);
     q
 }
-
-pub fn vectorize_model_q(p: &RawPayload<'_>) -> [i16; STORE_DIM] {
-    let mut q = [0i16; STORE_DIM];
-    q[0] = quantize_clamped(p.amount / MAX_AMOUNT);
-    q[1] = quantize_clamped(p.installments as f64 / MAX_INSTALLMENTS);
-
-    let ratio = if p.customer_avg_amount > 0.0 {
-        p.amount / p.customer_avg_amount
-    } else {
-        f64::INFINITY
-    };
-    q[2] = quantize_clamped(ratio / AMOUNT_VS_AVG_RATIO);
-
-    q[6] = if p.has_last_tx {
-        quantize_clamped(p.last_tx_km / MAX_KM)
-    } else {
-        -(crate::SCALE as i16)
-    };
-    q[7] = quantize_clamped(p.km_from_home / MAX_KM);
-    q[8] = quantize_clamped(p.tx_count_24h as f64 / MAX_TX_COUNT_24H);
-    q[12] = quantize(mcc_risk_lookup(p.merchant_mcc));
-    q[13] = quantize_clamped(p.merchant_avg_amount / MAX_MERCHANT_AVG_AMOUNT);
-    q
-}

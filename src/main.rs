@@ -1,4 +1,6 @@
 #[cfg(target_os = "linux")]
+use detecta_fraude::index::IndexReader;
+#[cfg(target_os = "linux")]
 use detecta_fraude::response::Responses;
 #[cfg(target_os = "linux")]
 use detecta_fraude::server::{accept_lb, create_listener, Server};
@@ -19,10 +21,21 @@ fn main() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(2);
     let responses: &'static Responses = Box::leak(Box::new(Responses::new()));
+    let index_path = env::var("INDEX_PATH").unwrap_or_else(|_| "/index/index.bin".to_string());
+    let index: &'static IndexReader =
+        Box::leak(Box::new(match IndexReader::open(Path::new(&index_path)) {
+            Ok(idx) => idx,
+            Err(e) => {
+                eprintln!("[api] erro carregando indice {}: {}", index_path, e);
+                process::exit(1);
+            }
+        }));
 
     eprintln!(
-        "[api] modelo gerado carregado. workers: {} prefix: {}",
-        workers, prefix
+        "[api] indice vetorial carregado: {} pontos. workers: {} prefix: {}",
+        index.n_points(),
+        workers,
+        prefix
     );
 
     let mut handles = Vec::with_capacity(workers);
@@ -31,7 +44,7 @@ fn main() {
         let prefix_clone = prefix.clone();
         let handle = thread::Builder::new()
             .name(format!("worker-{}", w))
-            .spawn(move || run_worker(w, socket, prefix_clone, responses))
+            .spawn(move || run_worker(w, socket, prefix_clone, responses, index))
             .expect("spawn worker");
         handles.push(handle);
     }
@@ -58,7 +71,13 @@ fn set_worker_nice() {
 }
 
 #[cfg(target_os = "linux")]
-fn run_worker(w: usize, socket: String, prefix: String, responses: &'static Responses) {
+fn run_worker(
+    w: usize,
+    socket: String,
+    prefix: String,
+    responses: &'static Responses,
+    index: &'static IndexReader,
+) {
     set_worker_nice();
     let listener = match create_listener(&PathBuf::from(&socket)) {
         Ok(fd) => fd,
@@ -92,7 +111,7 @@ fn run_worker(w: usize, socket: String, prefix: String, responses: &'static Resp
             }
         };
         eprintln!("[api-w{}] LB conectado (fd={})", w, uds_fd);
-        match Server::new(uds_fd, responses) {
+        match Server::new(uds_fd, responses, index) {
             Ok(mut s) => {
                 if let Err(e) = s.run() {
                     eprintln!("[api-w{}] server.run erro: {}", w, e);

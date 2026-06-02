@@ -1,7 +1,7 @@
-use crate::model;
+use crate::index::IndexReader;
 use crate::parse::parse_payload;
 use crate::response::Responses;
-use crate::vectorize::vectorize_model_q;
+use crate::vectorize::vectorize_q;
 use libc::{
     c_int, c_void, cmsghdr, epoll_create1, epoll_ctl, epoll_event, epoll_pwait2, epoll_wait, iovec,
     msghdr, recvmsg, timespec, EAGAIN, EINTR, ENOSYS, EPOLLERR, EPOLLHUP, EPOLLIN, EPOLLOUT,
@@ -24,6 +24,7 @@ pub struct Server {
     epfd: c_int,
     uds_fd: c_int,
     responses: &'static Responses,
+    index: &'static IndexReader,
     conns: Vec<Option<Box<Conn>>>,
     conn_pool: Vec<Box<Conn>>,
     conn_pool_cap: usize,
@@ -72,7 +73,11 @@ impl Conn {
 }
 
 impl Server {
-    pub fn new(uds_fd: c_int, responses: &'static Responses) -> io::Result<Self> {
+    pub fn new(
+        uds_fd: c_int,
+        responses: &'static Responses,
+        index: &'static IndexReader,
+    ) -> io::Result<Self> {
         set_nonblocking(uds_fd)?;
         let epfd = unsafe { epoll_create1(libc::EPOLL_CLOEXEC) };
         if epfd < 0 {
@@ -83,6 +88,7 @@ impl Server {
             epfd,
             uds_fd,
             responses,
+            index,
             conns: {
                 let mut slots = Vec::with_capacity(MAX_CLIENT_FD);
                 slots.resize_with(MAX_CLIENT_FD, || None);
@@ -294,6 +300,7 @@ impl Server {
     fn process_requests(&mut self, fd: c_int) -> bool {
         let idx = fd as usize;
         let responses = self.responses;
+        let index = self.index;
         loop {
             let conn = match self.conns.get_mut(idx).and_then(|s| s.as_mut()) {
                 Some(c) => c,
@@ -327,7 +334,7 @@ impl Server {
                     let method: &[u8] = unsafe { std::slice::from_raw_parts(m_ptr, m_len) };
                     let path: &[u8] = unsafe { std::slice::from_raw_parts(p_ptr, p_len) };
                     let body: &[u8] = unsafe { std::slice::from_raw_parts(body_ptr, body_len) };
-                    let resp = handle_request(method, path, body, responses);
+                    let resp = handle_request(method, path, body, responses, index);
                     (resp, body_end)
                 }
             };
@@ -473,14 +480,15 @@ fn handle_request<'a>(
     path: &[u8],
     body: &[u8],
     responses: &'a Responses,
+    index: &IndexReader,
 ) -> &'a [u8] {
     if method == b"POST" && path == b"/fraud-score" {
         let payload = match parse_payload(body) {
             Ok(p) => p,
             Err(_) => return &responses.fallback,
         };
-        let q = vectorize_model_q(&payload);
-        let fraud_count = if model::approved(&q) { 0 } else { 5 };
+        let q = vectorize_q(&payload);
+        let fraud_count = index.fraud_count(&q);
         return responses.for_count(fraud_count);
     }
     if method == b"GET" && path == b"/ready" {

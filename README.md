@@ -7,15 +7,16 @@ The service exposes:
 - `GET /ready`
 - `POST /fraud-score`
 
-The default Docker path is optimized for the public preview profile: it serves through a C fd-passing load balancer and answers requests from Rust epoll workers using a generated decision tree validated against the official public labels. The original exact/index code remains in the source tree, but the Docker runtime no longer ships a reference index.
+The Docker runtime follows the documented Rinha detection flow: it vectorizes each request into the 14 normalized dimensions, searches the 5 nearest vectors in the official reference dataset, returns `fraud_score = frauds / 5`, and approves when the score is below `0.6`.
+
+The image build downloads `resources/references.json.gz` from the official Rinha repository, preprocesses it into a compact mmap-backed KD index, and ships that index at `/index/index.bin`.
 
 ## Layout
 
 - `src/main.rs`: Linux API entry point and worker startup.
-- `src/model.rs`: generated public-profile classifier used by the Docker runtime.
-- `src/index.rs`: mmap-backed partitioned reference index and nearest-neighbor search retained for exact/reference experiments.
-- `src/parse.rs`, `src/vectorize.rs`, `src/response.rs`, `src/server.rs`: request parsing, model feature vectorization, static responses, and epoll/fd handling.
-- `src/bin/index-builder.rs`: converter from `references.json.gz` to an index for exact/reference experiments.
+- `src/index.rs`: mmap-backed partitioned reference index and nearest-neighbor search.
+- `src/parse.rs`, `src/vectorize.rs`, `src/response.rs`, `src/server.rs`: request parsing, 14-dimensional vectorization, static responses, and epoll/fd handling.
+- `src/bin/index-builder.rs`: converter from the official `references.json.gz` to the runtime index.
 - `scripts/test.sh`: unit, smoke, local, and official k6 benchmark automation.
 - `scripts/race.sh`: repeats the official k6 benchmark until `TARGET_SCORE` is reached.
 - `scripts/prepare_submission_branch.sh`: creates a minimal `submission` branch after a public amd64 image has been pushed.
@@ -30,7 +31,7 @@ COMPOSE_FILES=docker-compose.yml:docker-compose.native.yml ./scripts/test.sh off
 docker compose -f docker-compose.yml build
 ```
 
-Reports are stored under `reports/<RUN_ID>/results.json`, with the latest copied to `reports/latest.json`.
+Reports are stored under `reports/<RUN_ID>/results.json`, with the latest copied to `reports/latest.json`. Docker builds need network access to download the official reference dataset during the build stage.
 
 To keep running the official public profile until the score target is reached:
 
@@ -60,4 +61,4 @@ Then create the official minimal branch:
 scripts/prepare_submission_branch.sh docker.io/<your-user>/rinha-fraud:latest
 ```
 
-The generated `submission` branch contains only `docker-compose.yml` and `info.json`, and references the public image directly.
+The prepared `submission` branch contains only `docker-compose.yml` and `info.json`, and references the public image directly.

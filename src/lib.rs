@@ -2,7 +2,6 @@
 
 pub mod consts;
 pub mod index;
-pub mod model;
 pub mod parse;
 pub mod response;
 #[cfg(target_os = "linux")]

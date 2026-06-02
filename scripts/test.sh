@@ -102,7 +102,7 @@ start_local_server() {
   ensure_reference_index
   mkdir -p "$RUN_DIR"
   log "starting local API on ${HOST}:${PORT}"
-  RINHA_INDEX_PATH="$REFERENCES_KDX" BIND="$HOST" PORT="$PORT" \
+  INDEX_PATH="$REFERENCES_KDX" BIND="$HOST" PORT="$PORT" \
     "${ROOT}/target/release/rinha-fraud" \
     >"${RUN_DIR}/server.log" 2>&1 &
   SERVER_PID="$!"
@@ -193,6 +193,7 @@ official_mode() {
   wait_ready "http://127.0.0.1:9999/ready"
 
   log "running official public k6 profile"
+  mkdir -p "${ROOT}/.rinha-upstream/test/test"
   rm -f "${ROOT}/.rinha-upstream/test/test/results.json" "${ROOT}/.rinha-upstream/test/results.json"
   (cd "${ROOT}/.rinha-upstream/test" && docker compose --profile test up --abort-on-container-exit)
   mkdir -p "$RUN_DIR"
