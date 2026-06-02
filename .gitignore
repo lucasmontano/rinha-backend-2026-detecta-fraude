@@ -1,0 +1,6 @@
+/target/
+/data/
+*.ridx
+__pycache__/
+/.rinha-upstream/
+/reports/

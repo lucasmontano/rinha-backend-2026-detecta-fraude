@@ -1,0 +1,6 @@
+target
+.git
+data/*
+!data/references.json.gz
+*.ridx
+*.kdx

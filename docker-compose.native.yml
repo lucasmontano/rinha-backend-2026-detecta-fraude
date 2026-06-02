@@ -1,0 +1,16 @@
+services:
+  lb:
+    build:
+      context: .
+      dockerfile: Dockerfile.native
+    image: rinha-fraud:native
+    platform: linux/arm64
+
+  api1:
+    image: rinha-fraud:native
+    platform: linux/arm64
+
+  api2:
+    image: rinha-fraud:native
+    platform: linux/arm64
+    network_mode: "bridge"

@@ -1,0 +1,94 @@
+services:
+  lb:
+    build:
+      context: .
+    image: rinha-fraud:local
+    platform: linux/amd64
+    command: ["${LB_COMMAND:-/usr/local/bin/rinha-lb-c}"]
+    cpuset: "2,3"
+    logging:
+      driver: "${LOGGING_DRIVER:-none}"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    environment:
+      LB_PORT: "9999"
+      LB_BACKLOG: "65535"
+      LB_ACCEPT_BATCH: "${LB_ACCEPT_BATCH:-128}"
+      API_SOCKETS: "${API_SOCKETS:-/sockets/api1-w0.sock,/sockets/api2-w0.sock}"
+    volumes:
+      - sockets:/sockets
+    ports:
+      - "9999:9999"
+    depends_on:
+      - api1
+      - api2
+    deploy:
+      resources:
+        limits:
+          cpus: "${LB_CPUS:-0.30}"
+          memory: "20MB"
+
+  api1:
+    image: rinha-fraud:local
+    platform: linux/amd64
+    cpuset: "0"
+    logging:
+      driver: "${LOGGING_DRIVER:-none}"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    environment:
+      API_SOCKET_PREFIX: "/sockets/api1"
+      API_WORKERS: "1"
+      CONN_POOL_CAP: "512"
+      EPOLL_SPIN_US: "${EPOLL_SPIN_US:-0}"
+      EPOLL_IDLE_US: "${EPOLL_IDLE_US:-60}"
+      EPOLL_BUSY_POLL_US: "${EPOLL_BUSY_POLL_US:-100}"
+      EPOLL_BUSY_POLL_BUDGET: "${EPOLL_BUSY_POLL_BUDGET:-8}"
+      EPOLL_PREFER_BUSY_POLL: "${EPOLL_PREFER_BUSY_POLL:-1}"
+    volumes:
+      - sockets:/sockets
+    deploy:
+      resources:
+        limits:
+          cpus: "${API_CPUS:-0.35}"
+          memory: "165MB"
+
+  api2:
+    image: rinha-fraud:local
+    platform: linux/amd64
+    cpuset: "1"
+    network_mode: "none"
+    logging:
+      driver: "${LOGGING_DRIVER:-none}"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    environment:
+      API_SOCKET_PREFIX: "/sockets/api2"
+      API_WORKERS: "1"
+      CONN_POOL_CAP: "512"
+      EPOLL_SPIN_US: "${EPOLL_SPIN_US:-0}"
+      EPOLL_IDLE_US: "${EPOLL_IDLE_US:-60}"
+      EPOLL_BUSY_POLL_US: "${EPOLL_BUSY_POLL_US:-100}"
+      EPOLL_BUSY_POLL_BUDGET: "${EPOLL_BUSY_POLL_BUDGET:-8}"
+      EPOLL_PREFER_BUSY_POLL: "${EPOLL_PREFER_BUSY_POLL:-1}"
+    volumes:
+      - sockets:/sockets
+    deploy:
+      resources:
+        limits:
+          cpus: "${API_CPUS:-0.35}"
+          memory: "165MB"
+
+volumes:
+  sockets:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=4m,uid=0,gid=0,mode=0777"

@@ -1,0 +1,45 @@
+[package]
+name = "rinha-fraud"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "detecta_fraude"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rinha-fraud"
+path = "src/main.rs"
+
+[[bin]]
+name = "index-builder"
+path = "src/bin/index-builder.rs"
+
+[dependencies]
+libc = "0.2"
+memmap2 = "0.9"
+
+[features]
+default = []
+builder = ["dep:flate2", "dep:serde_json"]
+knn_stats = []
+
+[dependencies.flate2]
+version = "1"
+optional = true
+
+[dependencies.serde_json]
+version = "1"
+optional = true
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+panic = "abort"
+strip = true
+overflow-checks = false
+debug = false
+
+[profile.release.package."*"]
+opt-level = 3
