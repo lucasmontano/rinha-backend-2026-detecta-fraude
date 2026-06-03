@@ -389,7 +389,17 @@ impl IndexReader {
 
     #[inline]
     pub fn fraud_count(&self, query: &[i16; STORE_DIM]) -> u8 {
-        #[cfg(target_arch = "x86_64")]
+        #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+        {
+            if self.is_ivf() {
+                return unsafe { fraud_count_ivf_index_avx2(self, query) };
+            }
+            if self.is_kd_pair() {
+                return unsafe { fraud_count_pair_avx2(self, query) };
+            }
+            return unsafe { fraud_count_exact_avx2(self, query) };
+        }
+        #[cfg(all(target_arch = "x86_64", not(target_feature = "avx2")))]
         {
             if std::is_x86_feature_detected!("avx2") {
                 if self.is_ivf() {
@@ -412,7 +422,14 @@ impl IndexReader {
         if self.is_ivf() {
             return self.fraud_count(query);
         }
-        #[cfg(target_arch = "x86_64")]
+        #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+        {
+            if self.is_kd_pair() {
+                return unsafe { fraud_count_pair_avx2(self, query) };
+            }
+            return unsafe { fraud_count_exact_avx2(self, query) };
+        }
+        #[cfg(all(target_arch = "x86_64", not(target_feature = "avx2")))]
         {
             if std::is_x86_feature_detected!("avx2") {
                 if self.is_kd_pair() {

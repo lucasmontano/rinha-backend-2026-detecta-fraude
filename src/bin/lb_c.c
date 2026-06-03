@@ -122,9 +122,6 @@ int main(int argc, char **argv) {
     if (getenv("LB_PORT")) port = atoi(getenv("LB_PORT"));
     int backlog = getenv_int("LB_BACKLOG", 4096);
     int accept_batch = getenv_int("LB_ACCEPT_BATCH", DEFAULT_ACCEPT_BATCH);
-    int tcp_nodelay = getenv_int("LB_TCP_NODELAY", 1);
-    int tcp_quickack = getenv_int("LB_TCP_QUICKACK", 1);
-
     const char *socks_env = getenv("API_SOCKETS");
     if (!socks_env || !*socks_env) socks_env = "/sockets/api1.sock,/sockets/api2.sock";
 
@@ -194,12 +191,8 @@ int main(int argc, char **argv) {
             }
             accepted++;
             int one = 1;
-            if (tcp_nodelay) {
-                setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
-            }
-            if (tcp_quickack) {
-                setsockopt(cfd, IPPROTO_TCP, TCP_QUICKACK, &one, sizeof(one));
-            }
+            setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+            setsockopt(cfd, IPPROTO_TCP, TCP_QUICKACK, &one, sizeof(one));
             int target = rr;
             rr = (rr + 1) % nb;
             if (send_fd(&backends[target], cfd) != 0) {
