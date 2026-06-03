@@ -10,9 +10,9 @@ if [[ -z "$IMAGE" ]]; then
 usage: scripts/prepare_submission_branch.sh <public-linux-amd64-image>
 
 Example:
-  scripts/prepare_submission_branch.sh docker.io/lucasmontano/rinha-backend-2026:latest
+  scripts/prepare_submission_branch.sh ghcr.io/lucasmontano/rinha-backend-2026-detecta-fraude@sha256:<linux-amd64-manifest-digest>
 
-The image must already be public and compatible with linux/amd64.
+The image must already be public and compatible with linux/amd64. Prefer an immutable digest over a mutable tag.
 EOF
   exit 2
 fi

@@ -48,13 +48,14 @@ Docker builds need network access to download the official reference dataset dur
 For an official-style image on Apple Silicon, build and push an amd64 image:
 
 ```sh
-docker buildx build --platform linux/amd64 -t <your-user>/rinha-fraud:latest --push .
+docker buildx build --platform linux/amd64 -t <your-user>/rinha-fraud:<tag> --push .
+docker buildx imagetools inspect <your-user>/rinha-fraud:<tag>
 ```
 
-Then create the official minimal branch:
+Then create the official minimal branch using the immutable linux/amd64 manifest digest:
 
 ```sh
-scripts/prepare_submission_branch.sh docker.io/<your-user>/rinha-fraud:latest
+scripts/prepare_submission_branch.sh docker.io/<your-user>/rinha-fraud@sha256:<linux-amd64-manifest-digest>
 ```
 
-The prepared `submission` branch contains only `docker-compose.yml` and `info.json`, and references the public image directly.
+The prepared `submission` branch contains only `docker-compose.yml` and `info.json`, and references the public image by digest to avoid mutable tag cache ambiguity.
