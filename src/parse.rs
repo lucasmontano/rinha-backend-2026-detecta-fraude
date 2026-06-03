@@ -282,6 +282,113 @@ where
 }
 
 pub fn parse_payload(buf: &[u8]) -> Result<RawPayload<'_>, ParseError> {
+    parse_payload_ordered(buf).or_else(|_| parse_payload_generic(buf))
+}
+
+#[inline]
+fn expect_key(buf: &[u8], i: usize, expected: &[u8]) -> Result<usize, ParseError> {
+    let (key, next) = read_string(buf, i)?;
+    if key != expected {
+        return Err(ParseError);
+    }
+    expect(buf, next, b':')
+}
+
+fn parse_payload_ordered(buf: &[u8]) -> Result<RawPayload<'_>, ParseError> {
+    let mut p: RawPayload<'_> = RawPayload::default();
+    let mut i = expect(buf, 0, b'{')?;
+
+    i = expect_key(buf, i, b"id")?;
+    let (_, next) = read_string(buf, i)?;
+    i = expect(buf, next, b',')?;
+
+    i = expect_key(buf, i, b"transaction")?;
+    i = expect(buf, i, b'{')?;
+    i = expect_key(buf, i, b"amount")?;
+    let (n, next) = read_number_f64(buf, i)?;
+    p.amount = n;
+    i = expect(buf, next, b',')?;
+    i = expect_key(buf, i, b"installments")?;
+    let (n, next) = read_number_u32(buf, i)?;
+    p.installments = n;
+    i = expect(buf, next, b',')?;
+    i = expect_key(buf, i, b"requested_at")?;
+    let (s, next) = read_string(buf, i)?;
+    p.requested_at = parse_iso8601(s).ok_or(ParseError)?;
+    i = expect(buf, next, b'}')?;
+    i = expect(buf, i, b',')?;
+
+    i = expect_key(buf, i, b"customer")?;
+    i = expect(buf, i, b'{')?;
+    i = expect_key(buf, i, b"avg_amount")?;
+    let (n, next) = read_number_f64(buf, i)?;
+    p.customer_avg_amount = n;
+    i = expect(buf, next, b',')?;
+    i = expect_key(buf, i, b"tx_count_24h")?;
+    let (n, next) = read_number_u32(buf, i)?;
+    p.tx_count_24h = n;
+    i = expect(buf, next, b',')?;
+    i = expect_key(buf, i, b"known_merchants")?;
+    let (arr, next) = read_array_raw(buf, i)?;
+    p.known_merchants_buf = arr;
+    i = expect(buf, next, b'}')?;
+    i = expect(buf, i, b',')?;
+
+    i = expect_key(buf, i, b"merchant")?;
+    i = expect(buf, i, b'{')?;
+    i = expect_key(buf, i, b"id")?;
+    let (s, next) = read_string(buf, i)?;
+    p.merchant_id = s;
+    i = expect(buf, next, b',')?;
+    i = expect_key(buf, i, b"mcc")?;
+    let (s, next) = read_string(buf, i)?;
+    p.merchant_mcc = s;
+    i = expect(buf, next, b',')?;
+    i = expect_key(buf, i, b"avg_amount")?;
+    let (n, next) = read_number_f64(buf, i)?;
+    p.merchant_avg_amount = n;
+    i = expect(buf, next, b'}')?;
+    i = expect(buf, i, b',')?;
+
+    i = expect_key(buf, i, b"terminal")?;
+    i = expect(buf, i, b'{')?;
+    i = expect_key(buf, i, b"is_online")?;
+    let (b, next) = read_bool(buf, i)?;
+    p.is_online = b;
+    i = expect(buf, next, b',')?;
+    i = expect_key(buf, i, b"card_present")?;
+    let (b, next) = read_bool(buf, i)?;
+    p.card_present = b;
+    i = expect(buf, next, b',')?;
+    i = expect_key(buf, i, b"km_from_home")?;
+    let (n, next) = read_number_f64(buf, i)?;
+    p.km_from_home = n;
+    i = expect(buf, next, b'}')?;
+    i = expect(buf, i, b',')?;
+
+    i = expect_key(buf, i, b"last_transaction")?;
+    let null_start = skip_ws(buf, i);
+    if null_start + 4 <= buf.len() && &buf[null_start..null_start + 4] == b"null" {
+        p.has_last_tx = false;
+        i = null_start + 4;
+    } else {
+        p.has_last_tx = true;
+        i = expect(buf, i, b'{')?;
+        i = expect_key(buf, i, b"timestamp")?;
+        let (s, next) = read_string(buf, i)?;
+        p.last_tx_stamp = parse_iso8601(s).ok_or(ParseError)?;
+        i = expect(buf, next, b',')?;
+        i = expect_key(buf, i, b"km_from_current")?;
+        let (n, next) = read_number_f64(buf, i)?;
+        p.last_tx_km = n;
+        i = expect(buf, next, b'}')?;
+    }
+    let _ = expect(buf, i, b'}')?;
+
+    Ok(p)
+}
+
+fn parse_payload_generic(buf: &[u8]) -> Result<RawPayload<'_>, ParseError> {
     let mut p: RawPayload<'_> = RawPayload::default();
 
     for_each_kv(buf, 0, |buf, key, vstart| match key {

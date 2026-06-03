@@ -714,8 +714,8 @@ fn sum_labels(labels: &[u8; K]) -> u8 {
 }
 
 #[inline(always)]
-fn early_done(best: &[i64; K]) -> bool {
-    best[K - 1] <= EARLY_DISTANCE_LIMIT
+fn early_done(_best: &[i64; K]) -> bool {
+    false
 }
 
 #[cfg(target_arch = "x86_64")]
