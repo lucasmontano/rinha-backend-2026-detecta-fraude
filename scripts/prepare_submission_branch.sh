@@ -69,8 +69,6 @@ services:
       LB_PORT: "9999"
       LB_BACKLOG: "65535"
       LB_ACCEPT_BATCH: "128"
-      LB_TCP_NODELAY: "1"
-      LB_TCP_QUICKACK: "1"
       API_SOCKETS: "/sockets/api1-w0.sock,/sockets/api2-w0.sock"
     volumes:
       - sockets:/sockets
@@ -99,7 +97,7 @@ services:
       API_SOCKET_PREFIX: "/sockets/api1"
       API_WORKERS: "1"
       CONN_POOL_CAP: "512"
-      EPOLL_SPIN_US: "75"
+      EPOLL_SPIN_US: "0"
       EPOLL_IDLE_US: "60"
       EPOLL_BUSY_POLL_US: "100"
       EPOLL_BUSY_POLL_BUDGET: "8"
@@ -126,7 +124,7 @@ services:
       API_SOCKET_PREFIX: "/sockets/api2"
       API_WORKERS: "1"
       CONN_POOL_CAP: "512"
-      EPOLL_SPIN_US: "75"
+      EPOLL_SPIN_US: "0"
       EPOLL_IDLE_US: "60"
       EPOLL_BUSY_POLL_US: "100"
       EPOLL_BUSY_POLL_BUDGET: "8"

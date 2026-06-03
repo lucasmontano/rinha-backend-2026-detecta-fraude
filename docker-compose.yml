@@ -1,6 +1,6 @@
 services:
   lb:
-    image: ghcr.io/lucasmontano/rinha-backend-2026-detecta-fraude@sha256:2d46f6319662c01e9a67913b7531b25027e337dbc22d6c6408c31ea8ca70031b
+    image: ghcr.io/lucasmontano/rinha-backend-2026-detecta-fraude@sha256:b592737c88543344b821f10f0be542b2d6f8b2c6a5e1d1788701624d161e7995
     platform: linux/amd64
     command: ["/usr/local/bin/rinha-lb-c"]
     cpuset: "2,3"
@@ -14,8 +14,6 @@ services:
       LB_PORT: "9999"
       LB_BACKLOG: "65535"
       LB_ACCEPT_BATCH: "128"
-      LB_TCP_NODELAY: "1"
-      LB_TCP_QUICKACK: "1"
       API_SOCKETS: "/sockets/api1-w0.sock,/sockets/api2-w0.sock"
     volumes:
       - sockets:/sockets
@@ -31,7 +29,7 @@ services:
           memory: "20MB"
 
   api1:
-    image: ghcr.io/lucasmontano/rinha-backend-2026-detecta-fraude@sha256:2d46f6319662c01e9a67913b7531b25027e337dbc22d6c6408c31ea8ca70031b
+    image: ghcr.io/lucasmontano/rinha-backend-2026-detecta-fraude@sha256:b592737c88543344b821f10f0be542b2d6f8b2c6a5e1d1788701624d161e7995
     platform: linux/amd64
     cpuset: "0"
     logging:
@@ -44,7 +42,7 @@ services:
       API_SOCKET_PREFIX: "/sockets/api1"
       API_WORKERS: "1"
       CONN_POOL_CAP: "512"
-      EPOLL_SPIN_US: "75"
+      EPOLL_SPIN_US: "0"
       EPOLL_IDLE_US: "60"
       EPOLL_BUSY_POLL_US: "100"
       EPOLL_BUSY_POLL_BUDGET: "8"
@@ -58,7 +56,7 @@ services:
           memory: "165MB"
 
   api2:
-    image: ghcr.io/lucasmontano/rinha-backend-2026-detecta-fraude@sha256:2d46f6319662c01e9a67913b7531b25027e337dbc22d6c6408c31ea8ca70031b
+    image: ghcr.io/lucasmontano/rinha-backend-2026-detecta-fraude@sha256:b592737c88543344b821f10f0be542b2d6f8b2c6a5e1d1788701624d161e7995
     platform: linux/amd64
     cpuset: "1"
     logging:
@@ -71,7 +69,7 @@ services:
       API_SOCKET_PREFIX: "/sockets/api2"
       API_WORKERS: "1"
       CONN_POOL_CAP: "512"
-      EPOLL_SPIN_US: "75"
+      EPOLL_SPIN_US: "0"
       EPOLL_IDLE_US: "60"
       EPOLL_BUSY_POLL_US: "100"
       EPOLL_BUSY_POLL_BUDGET: "8"
