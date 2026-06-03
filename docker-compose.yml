@@ -14,6 +14,8 @@ services:
       LB_PORT: "9999"
       LB_BACKLOG: "65535"
       LB_ACCEPT_BATCH: "128"
+      LB_TCP_NODELAY: "1"
+      LB_TCP_QUICKACK: "0"
       API_SOCKETS: "/sockets/api1-w0.sock,/sockets/api2-w0.sock"
     volumes:
       - sockets:/sockets
