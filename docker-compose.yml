@@ -1,6 +1,6 @@
 services:
   lb:
-    image: ghcr.io/lucasmontano/rinha-backend-2026-detecta-fraude@sha256:b592737c88543344b821f10f0be542b2d6f8b2c6a5e1d1788701624d161e7995
+    image: ghcr.io/lucasmontano/rinha-backend-2026-detecta-fraude@sha256:2d46f6319662c01e9a67913b7531b25027e337dbc22d6c6408c31ea8ca70031b
     platform: linux/amd64
     command: ["/usr/local/bin/rinha-lb-c"]
     cpuset: "2,3"
@@ -31,7 +31,7 @@ services:
           memory: "20MB"
 
   api1:
-    image: ghcr.io/lucasmontano/rinha-backend-2026-detecta-fraude@sha256:b592737c88543344b821f10f0be542b2d6f8b2c6a5e1d1788701624d161e7995
+    image: ghcr.io/lucasmontano/rinha-backend-2026-detecta-fraude@sha256:2d46f6319662c01e9a67913b7531b25027e337dbc22d6c6408c31ea8ca70031b
     platform: linux/amd64
     cpuset: "0"
     logging:
@@ -58,7 +58,7 @@ services:
           memory: "165MB"
 
   api2:
-    image: ghcr.io/lucasmontano/rinha-backend-2026-detecta-fraude@sha256:b592737c88543344b821f10f0be542b2d6f8b2c6a5e1d1788701624d161e7995
+    image: ghcr.io/lucasmontano/rinha-backend-2026-detecta-fraude@sha256:2d46f6319662c01e9a67913b7531b25027e337dbc22d6c6408c31ea8ca70031b
     platform: linux/amd64
     cpuset: "1"
     logging:
