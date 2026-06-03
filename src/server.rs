@@ -319,22 +319,15 @@ impl Server {
                 ParseStatus::Need => return false,
                 ParseStatus::Bad => (&responses.fallback[..], conn.in_len),
                 ParseStatus::Got {
-                    method,
-                    path,
+                    kind,
                     body_start,
                     body_end,
                 } => {
-                    let m_ptr = method.as_ptr();
-                    let m_len = method.len();
-                    let p_ptr = path.as_ptr();
-                    let p_len = path.len();
                     let body = &conn.in_buf[body_start..body_end];
                     let body_ptr = body.as_ptr();
                     let body_len = body.len();
-                    let method: &[u8] = unsafe { std::slice::from_raw_parts(m_ptr, m_len) };
-                    let path: &[u8] = unsafe { std::slice::from_raw_parts(p_ptr, p_len) };
                     let body: &[u8] = unsafe { std::slice::from_raw_parts(body_ptr, body_len) };
-                    let resp = handle_request(method, path, body, responses, index);
+                    let resp = handle_request(kind, body, responses, index);
                     (resp, body_end)
                 }
             };
@@ -359,18 +352,24 @@ impl Server {
     }
 }
 
-enum ParseStatus<'a> {
+enum ParseStatus {
     Need,
     Bad,
     Got {
-        method: &'a [u8],
-        path: &'a [u8],
+        kind: RequestKind,
         body_start: usize,
         body_end: usize,
     },
 }
 
-fn parse_request(buf: &[u8]) -> ParseStatus<'_> {
+#[derive(Clone, Copy)]
+enum RequestKind {
+    FraudScore,
+    Ready,
+    Other,
+}
+
+fn parse_request(buf: &[u8]) -> ParseStatus {
     let head_end = match find_double_crlf(buf) {
         Some(p) => p,
         None => {
@@ -380,6 +379,35 @@ fn parse_request(buf: &[u8]) -> ParseStatus<'_> {
             return ParseStatus::Need;
         }
     };
+
+    let body_start = head_end + 4;
+
+    if buf.starts_with(b"GET /ready ") {
+        return ParseStatus::Got {
+            kind: RequestKind::Ready,
+            body_start,
+            body_end: body_start,
+        };
+    }
+
+    if buf.starts_with(b"POST /fraud-score ") {
+        let cl = match find_content_length(&buf[..head_end]) {
+            Some(n) => n,
+            None => return ParseStatus::Bad,
+        };
+        if cl > MAX_BODY {
+            return ParseStatus::Bad;
+        }
+        let body_end = body_start + cl;
+        if buf.len() < body_end {
+            return ParseStatus::Need;
+        }
+        return ParseStatus::Got {
+            kind: RequestKind::FraudScore,
+            body_start,
+            body_end,
+        };
+    }
 
     let line_end = match buf.iter().position(|&b| b == b'\r') {
         Some(p) => p,
@@ -398,12 +426,13 @@ fn parse_request(buf: &[u8]) -> ParseStatus<'_> {
     let method = &line[..sp1];
     let path = &after_method[..sp2];
 
-    let body_start = head_end + 4;
-
     if method == b"GET" {
         return ParseStatus::Got {
-            method,
-            path,
+            kind: if path == b"/ready" {
+                RequestKind::Ready
+            } else {
+                RequestKind::Other
+            },
             body_start,
             body_end: body_start,
         };
@@ -421,8 +450,11 @@ fn parse_request(buf: &[u8]) -> ParseStatus<'_> {
         return ParseStatus::Need;
     }
     ParseStatus::Got {
-        method,
-        path,
+        kind: if method == b"POST" && path == b"/fraud-score" {
+            RequestKind::FraudScore
+        } else {
+            RequestKind::Other
+        },
         body_start,
         body_end,
     }
@@ -476,25 +508,24 @@ fn find_content_length(headers: &[u8]) -> Option<usize> {
 }
 
 fn handle_request<'a>(
-    method: &[u8],
-    path: &[u8],
+    kind: RequestKind,
     body: &[u8],
     responses: &'a Responses,
     index: &IndexReader,
 ) -> &'a [u8] {
-    if method == b"POST" && path == b"/fraud-score" {
-        let payload = match parse_payload(body) {
-            Ok(p) => p,
-            Err(_) => return &responses.fallback,
-        };
-        let q = vectorize_q(&payload);
-        let fraud_count = index.fraud_count(&q);
-        return responses.for_count(fraud_count);
+    match kind {
+        RequestKind::FraudScore => {
+            let payload = match parse_payload(body) {
+                Ok(p) => p,
+                Err(_) => return &responses.fallback,
+            };
+            let q = vectorize_q(&payload);
+            let fraud_count = index.fraud_count(&q);
+            responses.for_count(fraud_count)
+        }
+        RequestKind::Ready => &responses.ready,
+        RequestKind::Other => &responses.fallback,
     }
-    if method == b"GET" && path == b"/ready" {
-        return &responses.ready;
-    }
-    &responses.fallback
 }
 
 enum WriteResult<'a> {
