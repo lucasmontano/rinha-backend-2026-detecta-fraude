@@ -114,7 +114,6 @@ services:
     image: ${IMAGE}
     platform: linux/amd64
     cpuset: "1"
-    network_mode: "none"
     logging:
       driver: "none"
     ulimits:
