@@ -194,18 +194,10 @@ int main(int argc, char **argv) {
             int one = 1;
             setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
             setsockopt(cfd, IPPROTO_TCP, TCP_QUICKACK, &one, sizeof(one));
-            int first = rr;
+            int target = rr;
             rr = (rr + 1) % nb;
-            int ok = 0;
-            for (int off = 0; off < nb; off++) {
-                int target = (first + off) % nb;
-                if (send_fd(&backends[target], cfd) == 0) {
-                    ok = 1;
-                    break;
-                }
-            }
-            if (!ok) {
-                (void)send_fd_blocking(&backends[first], cfd);
+            if (send_fd(&backends[target], cfd) != 0) {
+                (void)send_fd_blocking(&backends[target], cfd);
             }
             close(cfd);
         }
