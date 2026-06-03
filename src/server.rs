@@ -205,11 +205,8 @@ impl Server {
                         unsafe { libc::close(fd) };
                         continue;
                     }
-                    if let Err(_) = set_nonblocking(fd) {
-                        unsafe { libc::close(fd) };
-                        continue;
-                    }
-                    set_tcp_options(fd);
+                    // The C load balancer accepts client sockets with SOCK_NONBLOCK
+                    // and applies TCP options before passing the fd through SCM_RIGHTS.
                     if self.register(fd).is_err() {
                         unsafe { libc::close(fd) };
                         continue;
