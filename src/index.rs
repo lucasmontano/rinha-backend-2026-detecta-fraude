@@ -1148,20 +1148,21 @@ unsafe fn scan_leaf_pair_avx2(
     best_dists: &mut [i64; K],
     best_labels: &mut [u8; K],
 ) -> bool {
-    let blocks = (len as usize).div_ceil(LANES);
     let labels_ptr = idx.labels_ptr();
     let vectors_ptr = idx.vectors_ptr();
     let total_len = len as usize;
+    let full_blocks = total_len / LANES;
+    let tail = total_len % LANES;
     stats::inc_leaves();
 
-    for b in 0..blocks {
+    for b in 0..full_blocks {
         stats::inc_blocks();
         let block_idx = start_block as usize + b;
         let labels_base = block_idx * LANES;
         let block_off_i16 = block_idx * DIM * LANES;
         let dists = distance_pair_block8(vectors_ptr, block_off_i16, q_pairs);
-        let lane_count = (total_len - b * LANES).min(LANES);
-        for (lane, &d) in dists.iter().enumerate().take(lane_count) {
+        for lane in 0..LANES {
+            let d = dists[lane];
             if d < best_dists[K - 1] {
                 let label = *labels_ptr.add(labels_base + lane);
                 insert_best(d, label, best_dists, best_labels);
@@ -1169,6 +1170,20 @@ unsafe fn scan_leaf_pair_avx2(
         }
         if early_done(best_dists) {
             return true;
+        }
+    }
+    if tail != 0 {
+        stats::inc_blocks();
+        let block_idx = start_block as usize + full_blocks;
+        let labels_base = block_idx * LANES;
+        let block_off_i16 = block_idx * DIM * LANES;
+        let dists = distance_pair_block8(vectors_ptr, block_off_i16, q_pairs);
+        for lane in 0..tail {
+            let d = dists[lane];
+            if d < best_dists[K - 1] {
+                let label = *labels_ptr.add(labels_base + lane);
+                insert_best(d, label, best_dists, best_labels);
+            }
         }
     }
     false
