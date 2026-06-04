@@ -30,6 +30,13 @@ fn main() {
                 process::exit(1);
             }
         }));
+    if !index.is_kd_pair_index() {
+        eprintln!(
+            "[api] indice {} nao esta no formato KD-pair esperado",
+            index_path
+        );
+        process::exit(1);
+    }
 
     eprintln!(
         "[api] indice vetorial carregado: {} pontos. workers: {} prefix: {}",

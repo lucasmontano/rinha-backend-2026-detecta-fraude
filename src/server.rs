@@ -153,7 +153,7 @@ impl Server {
     }
 
     pub fn run(&mut self) -> io::Result<()> {
-        const MAX_EVENTS: usize = 128;
+        const MAX_EVENTS: usize = 192;
         let mut events: [epoll_event; MAX_EVENTS] = unsafe { MaybeUninit::zeroed().assume_init() };
         let spin = std::time::Duration::from_micros(epoll_spin_us());
         let idle_us = epoll_idle_us();
@@ -206,7 +206,7 @@ impl Server {
                         continue;
                     }
                     // The C load balancer accepts client sockets with SOCK_NONBLOCK
-                    // and applies TCP options before passing the fd through SCM_RIGHTS.
+                    // and hands them to the API through SCM_RIGHTS.
                     if self.register(fd).is_err() {
                         unsafe { libc::close(fd) };
                         continue;
@@ -473,6 +473,10 @@ fn find_double_crlf(buf: &[u8]) -> Option<usize> {
 }
 
 fn find_content_length(headers: &[u8]) -> Option<usize> {
+    if let Some(n) = find_content_length_fast(headers) {
+        return Some(n);
+    }
+
     const NEEDLE: &[u8] = b"content-length:";
     let mut i = 0;
     'outer: while i + NEEDLE.len() <= headers.len() {
@@ -504,6 +508,34 @@ fn find_content_length(headers: &[u8]) -> Option<usize> {
     None
 }
 
+#[inline]
+fn find_content_length_fast(headers: &[u8]) -> Option<usize> {
+    const NEEDLE: &[u8] = b"Content-Length:";
+    let mut i = 0;
+    while i + NEEDLE.len() <= headers.len() {
+        if (i == 0 || headers[i - 1] == b'\n') && headers[i..].starts_with(NEEDLE) {
+            let mut j = i + NEEDLE.len();
+            while j < headers.len() && (headers[j] == b' ' || headers[j] == b'\t') {
+                j += 1;
+            }
+            let start = j;
+            let mut n = 0usize;
+            while j < headers.len() && headers[j].is_ascii_digit() {
+                n = n
+                    .checked_mul(10)?
+                    .checked_add(usize::from(headers[j] - b'0'))?;
+                j += 1;
+            }
+            if j == start {
+                return None;
+            }
+            return Some(n);
+        }
+        i += 1;
+    }
+    None
+}
+
 fn handle_request<'a>(
     kind: RequestKind,
     body: &[u8],
@@ -517,7 +549,7 @@ fn handle_request<'a>(
                 Err(_) => return &responses.fallback,
             };
             let q = vectorize_q(&payload);
-            let fraud_count = index.fraud_count(&q);
+            let fraud_count = index.fraud_count_kd_pair(&q);
             responses.for_count(fraud_count)
         }
         RequestKind::Ready => &responses.ready,
@@ -707,26 +739,6 @@ fn set_nonblocking(fd: c_int) -> io::Result<()> {
         }
     }
     Ok(())
-}
-
-fn set_tcp_options(fd: c_int) {
-    let on: c_int = 1;
-    unsafe {
-        libc::setsockopt(
-            fd,
-            libc::IPPROTO_TCP,
-            libc::TCP_NODELAY,
-            &on as *const c_int as *const c_void,
-            std::mem::size_of::<c_int>() as libc::socklen_t,
-        );
-        libc::setsockopt(
-            fd,
-            libc::IPPROTO_TCP,
-            libc::TCP_QUICKACK,
-            &on as *const c_int as *const c_void,
-            std::mem::size_of::<c_int>() as libc::socklen_t,
-        );
-    }
 }
 
 fn recv_fds(uds_fd: c_int) -> io::Result<Option<c_int>> {

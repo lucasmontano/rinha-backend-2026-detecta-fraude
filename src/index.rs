@@ -94,7 +94,7 @@ pub const LANES: usize = 8;
 pub const BLOCK_BYTES: usize = DIM * LANES * 2;
 pub const IVF_PAIRS: usize = DIM / 2;
 pub const MCC_TABLE_SIZE: usize = 1024;
-pub const DEFAULT_LEAF_SIZE: usize = 128;
+pub const DEFAULT_LEAF_SIZE: usize = 80;
 pub const EARLY_DISTANCE_MILLI: i32 = 140;
 pub const EARLY_DISTANCE_LIMIT: i64 = {
     let v = (SCALE as i32 * EARLY_DISTANCE_MILLI / 1000) as i64;
@@ -373,6 +373,11 @@ impl IndexReader {
     }
 
     #[inline]
+    pub fn is_kd_pair_index(&self) -> bool {
+        self.is_kd_pair()
+    }
+
+    #[inline]
     fn ivf_offset(&self, cluster: usize) -> u32 {
         read_u32_at(self.base, self.ivf_offsets_off + cluster * 4)
     }
@@ -415,6 +420,29 @@ impl IndexReader {
             return fraud_count_ivf_index_scalar(self, query);
         }
         fraud_count_scalar(self, query)
+    }
+
+    #[inline]
+    pub fn fraud_count_kd_pair(&self, query: &[i16; STORE_DIM]) -> u8 {
+        debug_assert!(self.is_kd_pair());
+
+        #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+        {
+            unsafe { fraud_count_pair_avx2(self, query) }
+        }
+
+        #[cfg(all(target_arch = "x86_64", not(target_feature = "avx2")))]
+        {
+            if std::is_x86_feature_detected!("avx2") {
+                return unsafe { fraud_count_pair_avx2(self, query) };
+            }
+            fraud_count_scalar(self, query)
+        }
+
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            fraud_count_scalar(self, query)
+        }
     }
 
     #[inline]
@@ -953,6 +981,48 @@ unsafe fn distance_pair_block8(
     ]
 }
 
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+unsafe fn distance_pair_block8_masked(
+    vectors: *const i16,
+    block_off_i16: usize,
+    q_pairs: &[std::arch::x86_64::__m256i; IVF_PAIRS],
+    threshold: i64,
+) -> (u32, [i32; LANES]) {
+    use std::arch::x86_64::*;
+
+    let base = vectors.add(block_off_i16);
+    let mut acc = _mm256_setzero_si256();
+    for p in 0..IVF_PAIRS {
+        let packed = _mm256_loadu_si256(base.add(p * LANES * 2) as *const __m256i);
+        let diff = _mm256_sub_epi16(q_pairs[p], packed);
+        acc = _mm256_add_epi32(acc, _mm256_madd_epi16(diff, diff));
+    }
+
+    let mut vals = [0i32; LANES];
+    if threshold > i32::MAX as i64 {
+        _mm256_storeu_si256(vals.as_mut_ptr() as *mut __m256i, acc);
+        return (0xff, vals);
+    }
+
+    let cmp = _mm256_cmpgt_epi32(_mm256_set1_epi32(threshold as i32), acc);
+    let mask = _mm256_movemask_ps(_mm256_castsi256_ps(cmp)) as u32;
+    if mask == 0 {
+        return (0, vals);
+    }
+
+    _mm256_storeu_si256(vals.as_mut_ptr() as *mut __m256i, acc);
+    (mask, vals)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+fn next_mask_lane(mask: &mut u32) -> usize {
+    let lane = mask.trailing_zeros() as usize;
+    *mask &= *mask - 1;
+    lane
+}
+
 fn fraud_count_ivf_index_scalar(idx: &IndexReader, query: &[i16; STORE_DIM]) -> u8 {
     let mut best_dists = [i64::MAX; K];
     let mut best_labels = [0u8; K];
@@ -1160,9 +1230,15 @@ unsafe fn scan_leaf_pair_avx2(
         let block_idx = start_block as usize + b;
         let labels_base = block_idx * LANES;
         let block_off_i16 = block_idx * DIM * LANES;
-        let dists = distance_pair_block8(vectors_ptr, block_off_i16, q_pairs);
-        for lane in 0..LANES {
-            let d = dists[lane];
+        let (mask, dists) =
+            distance_pair_block8_masked(vectors_ptr, block_off_i16, q_pairs, best_dists[K - 1]);
+        if mask == 0 {
+            continue;
+        }
+        let mut mask = mask;
+        while mask != 0 {
+            let lane = next_mask_lane(&mut mask);
+            let d = dists[lane] as i64;
             if d < best_dists[K - 1] {
                 let label = *labels_ptr.add(labels_base + lane);
                 insert_best(d, label, best_dists, best_labels);
@@ -1177,9 +1253,17 @@ unsafe fn scan_leaf_pair_avx2(
         let block_idx = start_block as usize + full_blocks;
         let labels_base = block_idx * LANES;
         let block_off_i16 = block_idx * DIM * LANES;
-        let dists = distance_pair_block8(vectors_ptr, block_off_i16, q_pairs);
-        for lane in 0..tail {
-            let d = dists[lane];
+        let tail_mask = (1u32 << tail) - 1;
+        let (mask, dists) =
+            distance_pair_block8_masked(vectors_ptr, block_off_i16, q_pairs, best_dists[K - 1]);
+        let mask = mask & tail_mask;
+        if mask == 0 {
+            return false;
+        }
+        let mut mask = mask;
+        while mask != 0 {
+            let lane = next_mask_lane(&mut mask);
+            let d = dists[lane] as i64;
             if d < best_dists[K - 1] {
                 let label = *labels_ptr.add(labels_base + lane);
                 insert_best(d, label, best_dists, best_labels);
@@ -1504,6 +1588,32 @@ fn scan_leaf_scalar(
         }
     }
     false
+}
+
+#[cfg(all(test, target_arch = "x86_64", target_feature = "avx2"))]
+mod avx2_tests {
+    use super::*;
+    use std::arch::x86_64::*;
+
+    #[test]
+    fn mask_keeps_only_lanes_below_threshold() {
+        let mut vectors = vec![0i16; IVF_PAIRS * LANES * 2];
+        let mut q_pairs = unsafe { [_mm256_setzero_si256(); IVF_PAIRS] };
+        let lane_values = [1i16, 2, 3, 4, 5, 6, 7, 8];
+
+        for p in 0..IVF_PAIRS {
+            q_pairs[p] = unsafe { _mm256_setzero_si256() };
+            for (lane, &v) in lane_values.iter().enumerate() {
+                vectors[p * LANES * 2 + lane * 2] = v;
+            }
+        }
+
+        let (mask, dists) =
+            unsafe { distance_pair_block8_masked(vectors.as_ptr(), 0, &q_pairs, 200) };
+
+        assert_eq!(mask, 0b0001_1111);
+        assert_eq!(&dists[..LANES], &[7, 28, 63, 112, 175, 252, 343, 448]);
+    }
 }
 
 #[cfg(feature = "builder")]

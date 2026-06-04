@@ -81,23 +81,15 @@ static int wait_for_socket(const char *path) {
     return -1;
 }
 
-static int send_fd_with_flags(backend_t *dst, int fd, int flags) {
+static int send_fd(backend_t *dst, int fd) {
     dst->msg.msg_controllen = sizeof(dst->control.buf);
     memcpy(CMSG_DATA(dst->cmsg), &fd, sizeof(int));
     for (;;) {
-        ssize_t r = sendmsg(dst->fd, &dst->msg, MSG_NOSIGNAL | flags);
+        ssize_t r = sendmsg(dst->fd, &dst->msg, 0);
         if (r > 0) return 0;
         if (r < 0 && errno == EINTR) continue;
         return -1;
     }
-}
-
-static int send_fd(backend_t *dst, int fd) {
-    return send_fd_with_flags(dst, fd, MSG_DONTWAIT);
-}
-
-static int send_fd_blocking(backend_t *dst, int fd) {
-    return send_fd_with_flags(dst, fd, 0);
 }
 
 static int parse_backends(const char *env, char *paths[MAX_BACKENDS]) {
@@ -190,14 +182,11 @@ int main(int argc, char **argv) {
                 break;
             }
             accepted++;
-            int one = 1;
-            setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
-            setsockopt(cfd, IPPROTO_TCP, TCP_QUICKACK, &one, sizeof(one));
             int target = rr;
             rr = (rr + 1) % nb;
-            if (send_fd(&backends[target], cfd) != 0) {
-                (void)send_fd_blocking(&backends[target], cfd);
-            }
+            (void)send_fd(&backends[target], cfd);
+            int one = 1;
+            setsockopt(cfd, IPPROTO_TCP, TCP_QUICKACK, &one, sizeof(one));
             close(cfd);
         }
         if (accepted == 0) {
