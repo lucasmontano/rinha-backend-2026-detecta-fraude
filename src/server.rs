@@ -238,38 +238,38 @@ impl Server {
                 Some(c) => c,
                 None => return,
             };
-            loop {
-                let space = CONN_BUF_CAP - conn.in_len;
-                if space == 0 {
-                    close = true;
-                    break;
-                }
-                let n = unsafe {
-                    libc::recv(
-                        fd,
-                        conn.in_buf.as_mut_ptr().add(conn.in_len) as *mut c_void,
-                        space,
-                        0,
-                    )
-                };
-                if n > 0 {
-                    conn.in_len += n as usize;
-                    continue;
-                }
-                if n == 0 {
-                    close = true;
-                    break;
-                }
-                let err = io::Error::last_os_error();
-                let code = err.raw_os_error().unwrap_or(0);
-                if code == EAGAIN || code == libc::EWOULDBLOCK {
-                    break;
-                }
-                if code == EINTR {
-                    continue;
-                }
+            let space = CONN_BUF_CAP - conn.in_len;
+            if space == 0 {
                 close = true;
-                break;
+            } else {
+                loop {
+                    let n = unsafe {
+                        libc::recv(
+                            fd,
+                            conn.in_buf.as_mut_ptr().add(conn.in_len) as *mut c_void,
+                            space,
+                            0,
+                        )
+                    };
+                    if n > 0 {
+                        conn.in_len += n as usize;
+                        break;
+                    }
+                    if n == 0 {
+                        close = true;
+                        break;
+                    }
+                    let err = io::Error::last_os_error();
+                    let code = err.raw_os_error().unwrap_or(0);
+                    if code == EAGAIN || code == libc::EWOULDBLOCK {
+                        break;
+                    }
+                    if code == EINTR {
+                        continue;
+                    }
+                    close = true;
+                    break;
+                }
             }
         } else if (events & ((EPOLLERR | EPOLLHUP) as u32)) != 0 {
             close = true;
