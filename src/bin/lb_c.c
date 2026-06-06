@@ -154,6 +154,7 @@ int main(int argc, char **argv) {
     int on = 1;
     setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
     setsockopt(lfd, SOL_SOCKET, SO_REUSEPORT, &on, sizeof(on));
+    setsockopt(lfd, IPPROTO_TCP, TCP_DEFER_ACCEPT, &on, sizeof(on));
 
     struct sockaddr_in addr = {0};
     addr.sin_family = AF_INET;
